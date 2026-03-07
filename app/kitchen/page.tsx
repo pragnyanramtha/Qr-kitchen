@@ -110,6 +110,15 @@ export default function KitchenDashboard() {
         setHistory(prev => [...prev.slice(-19), currentOrders]);
     };
 
+    /** Derive the order-level status from the full items array so the client always sees the right step. */
+    const deriveOrderStatus = (items: OrderItem[]): OrderStatus => {
+        const statuses = items.map(i => i.status);
+        if (statuses.every(s => s === "delivered")) return "delivered";
+        if (statuses.some(s => s === "ready")) return "ready";
+        if (statuses.some(s => s === "cooking")) return "cooking";
+        return "received";
+    };
+
     const handleUndo = async () => {
         if (history.length === 0) return;
         const previous = history[history.length - 1];
@@ -163,7 +172,7 @@ export default function KitchenDashboard() {
             else if (item.status === "ready") newStatus = "delivered";
             return { ...item, status: newStatus };
         });
-        await updateDoc(doc(db, "orders", orderId), { items: updatedItems });
+        await updateDoc(doc(db, "orders", orderId), { items: updatedItems, status: deriveOrderStatus(updatedItems) });
     };
 
     const moveSingleItem = async (orderId: string, itemId: string, targetStatus: OrderStatus) => {
@@ -173,7 +182,7 @@ export default function KitchenDashboard() {
         const updatedItems = order.items.map(item =>
             item.id === itemId ? { ...item, status: targetStatus } : item
         );
-        await updateDoc(doc(db, "orders", orderId), { items: updatedItems });
+        await updateDoc(doc(db, "orders", orderId), { items: updatedItems, status: deriveOrderStatus(updatedItems) });
     };
 
     // HTML5 Drag Handlers (Enhanced by mobile-drag-drop)
