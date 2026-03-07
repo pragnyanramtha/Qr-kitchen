@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { 
     Clock, Check, GripVertical, Settings, Bell, 
     UtensilsCrossed, ListTodo, Package, Users, Plus,
-    BarChart3, DollarSign, TrendingUp, Edit3, Trash2, Save, X, Image as ImageIcon, Info, Leaf, Flame, Star
+    BarChart3, IndianRupee, TrendingUp, Edit3, Trash2, Save, X, Image as ImageIcon, Info, Leaf, Flame, Star,
+    Upload, Link as LinkIcon
 } from "lucide-react";
 import toast, { Toaster } from "react-hot-toast";
 import Link from 'next/link';
@@ -91,6 +92,7 @@ export default function OwnerDashboard() {
     // Initial State
     const [orders, setOrders] = useState<Order[]>([]);
     const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+    const [dragHover, setDragHover] = useState<OrderStatus | null>(null);
 
     // Firestore real-time listeners (start only once authenticated)
     useEffect(() => {
@@ -166,6 +168,26 @@ export default function OwnerDashboard() {
 
     // --- Menu Management Methods ---
     const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
+    const [imageUploading, setImageUploading] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const handleImageFile = useCallback((file: File) => {
+        if (!file.type.startsWith('image/')) return;
+        setImageUploading(true);
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const dataUrl = e.target?.result as string;
+            setEditingItem(prev => prev ? { ...prev, image: dataUrl } : prev);
+            setImageUploading(false);
+        };
+        reader.readAsDataURL(file);
+    }, []);
+
+    const handleImagePaste = useCallback((e: React.ClipboardEvent) => {
+        const file = Array.from(e.clipboardData.items)
+            .find(item => item.type.startsWith('image/'))?.getAsFile();
+        if (file) handleImageFile(file);
+    }, [handleImageFile]);
 
     const handleSaveMenuItem = async (item: MenuItem) => {
         const docId = item.id || `m${Date.now()}`;
@@ -430,7 +452,7 @@ export default function OwnerDashboard() {
                                         <div className="p-5 flex-1 flex flex-col">
                                             <div className="flex justify-between items-start mb-2">
                                                 <h3 className="text-lg font-serif font-bold text-neutral-900 leading-tight">{item.name}</h3>
-                                                <span className="text-lg font-medium text-neutral-900">${item.price.toFixed(2)}</span>
+                                                <span className="text-lg font-medium text-neutral-900">₹{item.price.toFixed(2)}</span>
                                             </div>
                                             
                                             <p className="text-sm text-neutral-500 line-clamp-2 mb-4 leading-relaxed">
@@ -481,10 +503,10 @@ export default function OwnerDashboard() {
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                                 <div className="bg-white border border-neutral-200 rounded-2xl p-6 shadow-sm">
                                     <div className="flex items-center gap-3 text-neutral-500 font-medium text-sm mb-4">
-                                        <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg"><DollarSign className="w-5 h-5" /></div>
+                                        <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg"><IndianRupee className="w-5 h-5" /></div>
                                         Total Revenue
                                     </div>
-                                    <div className="text-4xl font-bold tracking-tight text-neutral-900">${getTotalRevenue().toFixed(2)}</div>
+                                    <div className="text-4xl font-bold tracking-tight text-neutral-900">₹{getTotalRevenue().toFixed(2)}</div>
                                 </div>
                                 <div className="bg-white border border-neutral-200 rounded-2xl p-6 shadow-sm">
                                     <div className="flex items-center gap-3 text-neutral-500 font-medium text-sm mb-4">
@@ -499,7 +521,7 @@ export default function OwnerDashboard() {
                                         Avg Ticket Size
                                     </div>
                                     <div className="text-4xl font-bold tracking-tight text-neutral-900">
-                                        ${orders.length ? (getTotalRevenue() / orders.length).toFixed(2) : '0.00'}
+                                        ₹{orders.length ? (getTotalRevenue() / orders.length).toFixed(2) : '0.00'}
                                     </div>
                                 </div>
                             </div>
@@ -566,7 +588,7 @@ export default function OwnerDashboard() {
 
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
-                                            <label className="block text-sm font-semibold text-neutral-700 mb-1.5">Price ($)</label>
+                                            <label className="block text-sm font-semibold text-neutral-700 mb-1.5">Price (₹)</label>
                                             <input 
                                                 type="number" 
                                                 value={editingItem.price}
@@ -604,24 +626,56 @@ export default function OwnerDashboard() {
                                 {/* Right Column: Media & Meta */}
                                 <div className="space-y-5">
                                     <div>
-                                        <label className="block text-sm font-semibold text-neutral-700 mb-1.5">Image URL</label>
-                                        <input 
-                                            type="text" 
-                                            value={editingItem.image}
-                                            onChange={e => setEditingItem({...editingItem, image: e.target.value})}
-                                            className="w-full bg-white border border-neutral-300 rounded-lg px-4 py-2.5 text-neutral-900 focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900 transition-all outline-none mb-2"
-                                            placeholder="/images/burger.png"
-                                        />
-                                        <div className="h-32 bg-neutral-50 rounded-lg border border-neutral-200 overflow-hidden flex items-center justify-center">
-                                            {editingItem.image ? (
+                                        <label className="block text-sm font-semibold text-neutral-700 mb-2">Item Image</label>
+
+                                        {/* Drop / paste zone */}
+                                        <div
+                                            className="relative h-36 bg-neutral-50 rounded-xl border-2 border-dashed border-neutral-300 overflow-hidden flex items-center justify-center cursor-pointer hover:border-neutral-500 transition-colors mb-2"
+                                            onClick={() => fileInputRef.current?.click()}
+                                            onPaste={handleImagePaste}
+                                            onDragOver={e => e.preventDefault()}
+                                            onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleImageFile(f); }}
+                                            tabIndex={0}
+                                            onKeyDown={e => e.key === 'Enter' && fileInputRef.current?.click()}
+                                        >
+                                            {imageUploading ? (
+                                                <div className="flex flex-col items-center text-neutral-400">
+                                                    <div className="w-5 h-5 border-2 border-neutral-300 border-t-neutral-600 rounded-full animate-spin mb-2" />
+                                                    <span className="text-xs">Loading…</span>
+                                                </div>
+                                            ) : editingItem.image ? (
                                                 // eslint-disable-next-line @next/next/no-img-element
                                                 <img src={editingItem.image} alt="Preview" className="h-full w-full object-cover" />
                                             ) : (
-                                                <div className="flex flex-col items-center text-neutral-400">
-                                                    <ImageIcon className="w-6 h-6 mb-1" />
-                                                    <span className="text-xs">Image Preview</span>
+                                                <div className="flex flex-col items-center text-neutral-400 pointer-events-none">
+                                                    <Upload className="w-6 h-6 mb-1" />
+                                                    <span className="text-xs font-medium">Click to upload or drag & drop</span>
+                                                    <span className="text-[11px] mt-0.5">You can also paste (Ctrl+V) an image here</span>
                                                 </div>
                                             )}
+                                            {editingItem.image && (
+                                                <button
+                                                    type="button"
+                                                    onClick={e => { e.stopPropagation(); setEditingItem({...editingItem, image: ''}); }}
+                                                    className="absolute top-1.5 right-1.5 bg-neutral-900/70 hover:bg-neutral-900 text-white rounded-full p-1 transition-colors"
+                                                >
+                                                    <X className="w-3 h-3" />
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleImageFile(f); e.target.value = ''; }} />
+
+                                        {/* URL fallback */}
+                                        <div className="flex items-center gap-2 mt-2">
+                                            <LinkIcon className="w-4 h-4 text-neutral-400 shrink-0" />
+                                            <input
+                                                type="text"
+                                                value={editingItem.image.startsWith('data:') ? '' : editingItem.image}
+                                                onChange={e => setEditingItem({...editingItem, image: e.target.value})}
+                                                className="w-full bg-white border border-neutral-300 rounded-lg px-3 py-2 text-sm text-neutral-900 focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900 transition-all outline-none"
+                                                placeholder="Or paste a URL…"
+                                            />
                                         </div>
                                     </div>
 
