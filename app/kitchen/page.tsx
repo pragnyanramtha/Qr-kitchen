@@ -6,6 +6,8 @@ import toast, { Toaster } from "react-hot-toast";
 import Link from 'next/link';
 import { polyfill } from "mobile-drag-drop";
 import { scrollBehaviourDragImageTranslateOverride } from "mobile-drag-drop/scroll-behaviour";
+import { collection, onSnapshot, doc, updateDoc, Timestamp } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 // Types
 type OrderStatus = "received" | "cooking" | "ready" | "delivered";
@@ -60,36 +62,27 @@ export default function KitchenDashboard() {
 
     // State & History
     const [history, setHistory] = useState<Order[][]>([]);
-    const [orders, setOrders] = useState<Order[]>([
-        {
-            id: "1041",
-            table: "05",
-            createdAt: new Date(Date.now() - 2 * 60000),
-            items: [
-                { id: "i1", name: "Truffle Fries", qty: 1, status: "received", category: "starter" },
-                { id: "i2", name: "Smash Burger Duo", qty: 2, notes: "No pickles", status: "received", category: "meal" },
-                { id: "i3", name: "Coke Zero", qty: 2, status: "received", category: "drink" }
-            ]
-        },
-        {
-            id: "1042",
-            table: "12",
-            createdAt: new Date(Date.now() - 15 * 60000),
-            items: [
-                { id: "i4", name: "Garlic Bread", qty: 2, done: false, status: "cooking", category: "starter" },
-                { id: "i5", name: "Spicy Rigatoni", qty: 1, done: true, status: "cooking", category: "meal" }
-            ]
-        },
-        {
-            id: "1043",
-            table: "02",
-            createdAt: new Date(Date.now() - 22 * 60000),
-            items: [
-                { id: "i6", name: "Margherita Pizza", qty: 1, done: true, status: "ready", category: "meal" },
-                { id: "i7", name: "Margarita Mocktail", qty: 2, done: true, status: "ready", category: "drink" }
-            ]
-        }
-    ]);
+    const [orders, setOrders] = useState<Order[]>([]);
+
+    // Firestore real-time listener
+    useEffect(() => {
+        if (!isAuthenticated) return;
+        const unsub = onSnapshot(collection(db, "orders"), (snap) => {
+            const docs = snap.docs
+                .map(d => {
+                    const data = d.data();
+                    return {
+                        id: d.id,
+                        table: data.tableId ?? data.table ?? "",
+                        createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(),
+                        items: (data.items ?? []).map((i: OrderItem) => ({ ...i, done: i.done ?? false })),
+                    } as Order;
+                })
+                .filter(o => o.items.some(i => i.status !== "delivered"));
+            setOrders(docs);
+        });
+        return () => unsub();
+    }, [isAuthenticated]);
 
     const [dragHover, setDragHover] = useState<OrderStatus | null>(null);
 
@@ -117,11 +110,12 @@ export default function KitchenDashboard() {
         setHistory(prev => [...prev.slice(-19), currentOrders]);
     };
 
-    const handleUndo = () => {
+    const handleUndo = async () => {
         if (history.length === 0) return;
         const previous = history[history.length - 1];
-        setOrders(previous);
         setHistory(prev => prev.slice(0, -1));
+        // Write each reverted order back to Firestore
+        await Promise.all(previous.map(o => updateDoc(doc(db, "orders", o.id), { items: o.items })));
         toast.error("ACTION UNDONE", {
             style: { borderRadius: '0', background: '#333', color: '#fff', fontWeight: 'bold' },
             icon: '🔙'
@@ -145,52 +139,41 @@ export default function KitchenDashboard() {
         setIsAuthenticated(false);
     };
 
-    const toggleItemDone = (orderId: string, itemId: string) => {
+    const toggleItemDone = async (orderId: string, itemId: string) => {
+        const order = orders.find(o => o.id === orderId);
+        if (!order) return;
         saveHistory(orders);
-        setOrders(prev => prev.map(order => {
-            if (order.id !== orderId) return order;
-            return {
-                ...order,
-                items: order.items.map(item =>
-                    item.id === itemId ? { ...item, done: !item.done } : item
-                )
-            };
-        }));
+        const updatedItems = order.items.map(item =>
+            item.id === itemId ? { ...item, done: !item.done } : item
+        );
+        await updateDoc(doc(db, "orders", orderId), { items: updatedItems });
     };
 
-    const advanceItemsStatus = (orderId: string, sourceStatus: OrderStatus, targetStatus?: OrderStatus) => {
+    const advanceItemsStatus = async (orderId: string, sourceStatus: OrderStatus, targetStatus?: OrderStatus) => {
+        const order = orders.find(o => o.id === orderId);
+        if (!order) return;
         saveHistory(orders);
-        setOrders(prev => prev.map(order => {
-            if (order.id !== orderId) return order;
-            return {
-                ...order,
-                items: order.items.map(item => {
-                    if (item.status !== sourceStatus) return item;
-
-                    let newStatus: OrderStatus = item.status;
-                    if (targetStatus) {
-                        newStatus = targetStatus;
-                    } else if (item.status === "received") newStatus = "cooking";
-                    else if (item.status === "cooking") newStatus = "ready";
-                    else if (item.status === "ready") newStatus = "delivered";
-
-                    return { ...item, status: newStatus };
-                })
-            };
-        }));
+        const updatedItems = order.items.map(item => {
+            if (item.status !== sourceStatus) return item;
+            let newStatus: OrderStatus = item.status;
+            if (targetStatus) {
+                newStatus = targetStatus;
+            } else if (item.status === "received") newStatus = "cooking";
+            else if (item.status === "cooking") newStatus = "ready";
+            else if (item.status === "ready") newStatus = "delivered";
+            return { ...item, status: newStatus };
+        });
+        await updateDoc(doc(db, "orders", orderId), { items: updatedItems });
     };
 
-    const moveSingleItem = (orderId: string, itemId: string, targetStatus: OrderStatus) => {
+    const moveSingleItem = async (orderId: string, itemId: string, targetStatus: OrderStatus) => {
+        const order = orders.find(o => o.id === orderId);
+        if (!order) return;
         saveHistory(orders);
-        setOrders(prev => prev.map(order => {
-            if (order.id !== orderId) return order;
-            return {
-                ...order,
-                items: order.items.map(item =>
-                    item.id === itemId ? { ...item, status: targetStatus } : item
-                )
-            };
-        }));
+        const updatedItems = order.items.map(item =>
+            item.id === itemId ? { ...item, status: targetStatus } : item
+        );
+        await updateDoc(doc(db, "orders", orderId), { items: updatedItems });
     };
 
     // HTML5 Drag Handlers (Enhanced by mobile-drag-drop)

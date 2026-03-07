@@ -4,14 +4,16 @@ import { useState, useEffect } from "react";
 import { AlertCircle, ListTodo, Package, Users, Power } from "lucide-react";
 import toast, { Toaster } from "react-hot-toast";
 import Link from 'next/link';
+import { collection, onSnapshot, doc, updateDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
-type ItemCategory = "starter" | "meal" | "drink";
+type ItemCategory = "Starters" | "Mains" | "Drinks" | "Desserts";
 
 interface MenuItem {
     id: string;
     name: string;
     category: ItemCategory;
-    is86d: boolean; // Out of stock flag
+    available: boolean;
 }
 
 export default function InventoryDashboard() {
@@ -22,18 +24,7 @@ export default function InventoryDashboard() {
 
     const [categoryFilter, setCategoryFilter] = useState<ItemCategory | "all">("all");
 
-    const [menu, setMenu] = useState<MenuItem[]>([
-        { id: "1", name: "Truffle Fries", category: "starter", is86d: false },
-        { id: "2", name: "Garlic Bread", category: "starter", is86d: false },
-        { id: "3", name: "Wagyu Sliders", category: "starter", is86d: true },
-        { id: "4", name: "Smash Burger Duo", category: "meal", is86d: false },
-        { id: "5", name: "Spicy Rigatoni", category: "meal", is86d: false },
-        { id: "6", name: "Margherita Pizza", category: "meal", is86d: false },
-        { id: "7", name: "Ribeye Steak (12oz)", category: "meal", is86d: false },
-        { id: "8", name: "Coke Zero", category: "drink", is86d: false },
-        { id: "9", name: "Margarita Mocktail", category: "drink", is86d: false },
-        { id: "10", name: "Craft IPA", category: "drink", is86d: true },
-    ]);
+    const [menu, setMenu] = useState<MenuItem[]>([]);
 
     useEffect(() => {
         if (typeof window !== 'undefined') {
@@ -43,6 +34,15 @@ export default function InventoryDashboard() {
             setIsAuthChecking(false);
         }
     }, []);
+
+    // Firestore real-time listener (start once authenticated)
+    useEffect(() => {
+        if (!isAuthenticated) return;
+        const unsub = onSnapshot(collection(db, "inventory"), (snap) => {
+            setMenu(snap.docs.map(d => ({ id: d.id, ...d.data() } as MenuItem)));
+        });
+        return () => unsub();
+    }, [isAuthenticated]);
 
     const handleLogin = (e: React.FormEvent) => {
         e.preventDefault();
@@ -61,12 +61,9 @@ export default function InventoryDashboard() {
         setIsAuthenticated(false);
     };
 
-    const toggleItemStatus = (id: string, name: string, currentState: boolean) => {
-        setMenu(prev => prev.map(item =>
-            item.id === id ? { ...item, is86d: !currentState } : item
-        ));
-
-        if (!currentState) {
+    const toggleItemStatus = async (id: string, name: string, currentAvailable: boolean) => {
+        await updateDoc(doc(db, "inventory", id), { available: !currentAvailable });
+        if (currentAvailable) {
             toast.error(`${name.toUpperCase()} HAS BEEN 86'd`, {
                 style: { borderRadius: '0', background: '#000', color: '#ef4444', border: '1px solid #ef4444' }
             });
@@ -152,7 +149,7 @@ export default function InventoryDashboard() {
                 {/* MIDDLE: Filters */}
                 <div className="flex-1 flex justify-center">
                     <div className="hidden md:flex items-center gap-1 bg-zinc-900 p-1 border border-zinc-800 rounded">
-                        {(["all", "starter", "meal", "drink"] as const).map(f => (
+                        {(["all", "Starters", "Mains", "Drinks", "Desserts"] as const).map(f => (
                             <button
                                 key={f}
                                 onClick={() => setCategoryFilter(f)}
@@ -190,7 +187,7 @@ export default function InventoryDashboard() {
 
             {/* Mobile Filters */}
             <div className="md:hidden flex overflow-x-auto bg-black border-b border-zinc-800 p-2 gap-2 no-scrollbar pl-4">
-                {(["all", "starter", "meal", "drink"] as const).map(f => (
+                {(["all", "Starters", "Mains", "Drinks", "Desserts"] as const).map(f => (
                     <button
                         key={f}
                         onClick={() => setCategoryFilter(f)}
@@ -207,11 +204,11 @@ export default function InventoryDashboard() {
                     {filteredMenu.map(item => (
                         <div
                             key={item.id}
-                            className={`flex flex-col border transition-all ${item.is86d ? "border-alert-red bg-alert-red/5" : "border-zinc-800 bg-black hover:border-zinc-600"}`}
+                            className={`flex flex-col border transition-all ${!item.available ? "border-alert-red bg-alert-red/5" : "border-zinc-800 bg-black hover:border-zinc-600"}`}
                         >
                             <div className="flex items-start justify-between p-6">
                                 <div>
-                                    <h3 className={`text-2xl font-black uppercase tracking-tight ${item.is86d ? "text-red-500 line-through opacity-70" : "text-white"}`}>
+                                    <h3 className={`text-2xl font-black uppercase tracking-tight ${!item.available ? "text-red-500 line-through opacity-70" : "text-white"}`}>
                                         {item.name}
                                     </h3>
                                     <div className="font-mono text-xs mt-2 uppercase text-zinc-500">
@@ -221,16 +218,16 @@ export default function InventoryDashboard() {
 
                                 {/* 86 / Active Toggle Button */}
                                 <button
-                                    onClick={() => toggleItemStatus(item.id, item.name, item.is86d)}
+                                    onClick={() => toggleItemStatus(item.id, item.name, item.available)}
                                     className={`w-14 h-14 shrink-0 flex items-center justify-center border-2 transition-all cursor-pointer active:scale-90
-                                        ${item.is86d ? "bg-alert-red border-alert-red text-white shadow-[0_0_20px_rgba(239,68,68,0.4)]" : "bg-zinc-900 border-zinc-700 text-zinc-400 hover:border-white hover:text-white"}`}
+                                        ${!item.available ? "bg-alert-red border-alert-red text-white shadow-[0_0_20px_rgba(239,68,68,0.4)]" : "bg-zinc-900 border-zinc-700 text-zinc-400 hover:border-white hover:text-white"}`}
                                 >
                                     <Power className="w-6 h-6" />
                                 </button>
                             </div>
 
-                            <div className={`p-4 border-t ${item.is86d ? "border-alert-red/20 bg-alert-red/10" : "border-zinc-800 bg-zinc-950"}`}>
-                                {item.is86d ? (
+                            <div className={`p-4 border-t ${!item.available ? "border-alert-red/20 bg-alert-red/10" : "border-zinc-800 bg-zinc-950"}`}>
+                                {!item.available ? (
                                     <span className="font-mono text-alert-red uppercase text-sm font-bold flex items-center gap-2"><AlertCircle className="w-4 h-4" /> Status: 86'D / Out of stock</span>
                                 ) : (
                                     <span className="font-mono text-alert-green uppercase text-sm flex items-center gap-2">Status: Active & Available</span>

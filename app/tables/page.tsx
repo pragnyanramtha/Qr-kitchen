@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { AlertCircle, Clock, ListTodo, Package, Users, ChefHat, CheckCircle2 } from "lucide-react";
 import Link from 'next/link';
+import { collection, onSnapshot, Timestamp } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 type OrderStatus = "received" | "cooking" | "ready" | "delivered";
 type ItemCategory = "starter" | "meal" | "drink" | "other";
@@ -32,54 +34,44 @@ export default function TablesDashboard() {
     const [password, setPassword] = useState("");
     const [error, setError] = useState("");
 
-    const [tables] = useState<TableSession[]>([
-        {
-            tableNumber: "05",
-            partyName: "Guest_294X",
-            guests: 3,
-            seatedAt: new Date(Date.now() - 45 * 60000), // 45 mins ago
-            orders: [
-                {
-                    id: "1041",
-                    items: [
-                        { id: "i1", name: "Truffle Fries", qty: 1, status: "received", category: "starter" },
-                        { id: "i2", name: "Smash Burger Duo", qty: 2, status: "received", category: "meal" },
-                        { id: "i3", name: "Coke Zero", qty: 2, status: "received", category: "drink" }
-                    ]
+    const [tables, setTables] = useState<TableSession[]>([]);
+
+    useEffect(() => {
+        if (!isAuthenticated) return;
+        const unsub = onSnapshot(collection(db, "orders"), (snap) => {
+            const activeOrders = snap.docs
+                .map(d => {
+                    const data = d.data();
+                    return {
+                        docId: d.id,
+                        tableId: data.tableId ?? data.table ?? "",
+                        status: data.status,
+                        createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(),
+                        items: data.items ?? [],
+                    };
+                })
+                .filter(o => o.status !== "delivered" && o.status !== "cancelled");
+
+            // Group by table
+            const sessionMap = new Map<string, TableSession>();
+            for (const o of activeOrders) {
+                if (!sessionMap.has(o.tableId)) {
+                    sessionMap.set(o.tableId, {
+                        tableNumber: o.tableId,
+                        partyName: `Guest_${o.tableId}`,
+                        guests: 0,
+                        seatedAt: o.createdAt,
+                        orders: [],
+                    });
                 }
-            ]
-        },
-        {
-            tableNumber: "12",
-            partyName: "Guest_112A",
-            guests: 2,
-            seatedAt: new Date(Date.now() - 25 * 60000),
-            orders: [
-                {
-                    id: "1042",
-                    items: [
-                        { id: "i4", name: "Garlic Bread", qty: 2, status: "cooking", category: "starter" },
-                        { id: "i5", name: "Spicy Rigatoni", qty: 1, status: "cooking", category: "meal" }
-                    ]
-                }
-            ]
-        },
-        {
-            tableNumber: "02",
-            partyName: "VIP_Smith",
-            guests: 4,
-            seatedAt: new Date(Date.now() - 90 * 60000),
-            orders: [
-                {
-                    id: "1043",
-                    items: [
-                        { id: "i6", name: "Margherita Pizza", qty: 1, status: "ready", category: "meal" },
-                        { id: "i7", name: "Margarita Mocktail", qty: 2, status: "ready", category: "drink" }
-                    ]
-                }
-            ]
-        }
-    ]);
+                const session = sessionMap.get(o.tableId)!;
+                session.orders.push({ id: o.docId, items: o.items });
+                if (o.createdAt < session.seatedAt) session.seatedAt = o.createdAt;
+            }
+            setTables(Array.from(sessionMap.values()).sort((a, b) => a.tableNumber.localeCompare(b.tableNumber)));
+        });
+        return () => unsub();
+    }, [isAuthenticated]);
 
     useEffect(() => {
         if (typeof window !== 'undefined') {
@@ -219,7 +211,7 @@ export default function TablesDashboard() {
                                             <span className="opacity-40 font-mono text-xl">TB</span>{session.tableNumber}
                                         </div>
                                         <div className="font-mono text-sm mt-2 text-zinc-400 uppercase tracking-widest flex items-center gap-2">
-                                            <Users className="w-4 h-4" /> {session.guests} PAX • {session.partyName}
+                                            <Users className="w-4 h-4" /> {session.partyName}
                                         </div>
                                     </div>
 
