@@ -387,8 +387,8 @@ export default function KitchenDashboard() {
                             <GripVertical className="w-6 h-6 opacity-40 hover:opacity-100" />
                         </div>
                         <div>
-                            <div className="text-2xl font-black uppercase leading-none text-white flex items-center gap-2">
-                                <span className="opacity-50 font-mono text-base">#</span>{order.id}
+                            <div className="text-2xl font-black uppercase leading-none text-white">
+                                {order.id}
                             </div>
                             <div className="font-mono text-sm mt-1 opacity-80 uppercase font-semibold">
                                 Table {order.table}

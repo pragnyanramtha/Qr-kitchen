@@ -244,17 +244,12 @@ export default function OwnerDashboard() {
     // Render components
     const renderKanbanColumn = (status: OrderStatus, title: string, badgeColor: string) => {
         const columnOrders = getOrdersForStatus(status);
-        const isHovered = dragHover === status;
 
         return (
             <div
-                onDragOver={(e) => { e.preventDefault(); setDragHover(status); }}
-                onDragEnter={(e) => { e.preventDefault(); setDragHover(status); }}
-                onDragLeave={() => setDragHover(null)}
-                onDrop={(e) => handleDrop(e, status)}
-                className={`flex-shrink-0 w-80 lg:w-96 flex flex-col bg-neutral-100/50 rounded-2xl transition-all border ${isHovered ? 'border-neutral-400 bg-neutral-100' : 'border-transparent'}`}
+                className="flex-shrink-0 w-80 lg:w-96 flex flex-col bg-neutral-100/50 rounded-2xl border border-transparent"
             >
-                <div className={`p-4 flex items-center justify-between sticky top-0 z-10 rounded-t-2xl`}>
+                <div className="p-4 flex items-center justify-between sticky top-0 z-10 rounded-t-2xl">
                     <h3 className="font-semibold text-neutral-800 flex items-center gap-2">
                         <span className={`w-2 h-2 rounded-full ${badgeColor}`}></span>
                         {title}
@@ -265,14 +260,11 @@ export default function OwnerDashboard() {
                     {columnOrders.map(order => (
                         <div
                             key={order.id}
-                            draggable
-                            onDragStart={(e) => handleDragStartOrder(e, order.id, status)}
-                            onTouchStart={(e) => handleDragStartOrder(e, order.id, status)}
-                            className="bg-white border border-neutral-200 rounded-xl hover:border-neutral-300 cursor-grab active:cursor-grabbing p-4 shadow-sm group relative transition-shadow hover:shadow-md"
+                            className="bg-white border border-neutral-200 rounded-xl p-4 shadow-sm"
                         >
                             <div className="flex justify-between items-start mb-4">
                                 <div>
-                                    <div className="text-lg font-bold text-neutral-900 tracking-tight">#{order.id}</div>
+                                    <div className="text-lg font-bold text-neutral-900 tracking-tight font-mono">{order.id}</div>
                                     <div className="text-sm text-neutral-500 font-medium">Table {order.table}</div>
                                 </div>
                                 <div className="text-xs text-neutral-400 font-medium flex items-center gap-1.5 bg-neutral-50 px-2 py-1 rounded-md border border-neutral-100">
@@ -280,15 +272,14 @@ export default function OwnerDashboard() {
                                     {Math.floor((Date.now() - order.createdAt.getTime()) / 60000)}m
                                 </div>
                             </div>
-                            <div className="space-y-3 pt-3 border-t border-neutral-100">
+                            <div className="space-y-2.5 pt-3 border-t border-neutral-100">
                                 {order.items.map(item => (
-                                    <div key={item.id} className="flex items-start gap-3">
-                                        <button 
-                                            onClick={() => toggleItemDeliveryCheck(order.id, item.id)}
-                                            className={`mt-0.5 shrink-0 w-5 h-5 rounded flex items-center justify-center transition-colors border ${item.done ? 'bg-neutral-900 border-neutral-900 text-white' : 'border-neutral-300 hover:border-neutral-400 bg-white'}`}
-                                        >
+                                    <div key={item.id} className="flex items-start gap-2">
+                                        <div className={`mt-0.5 shrink-0 w-5 h-5 rounded flex items-center justify-center border ${
+                                            item.done ? 'bg-neutral-900 border-neutral-900 text-white' : 'border-neutral-200 bg-neutral-50'
+                                        }`}>
                                             {item.done && <Check className="w-3.5 h-3.5" strokeWidth={3} />}
-                                        </button>
+                                        </div>
                                         <div className="flex-1 leading-tight pt-0.5">
                                             <div className={`text-sm ${item.done ? 'line-through text-neutral-400' : 'text-neutral-700'}`}>
                                                 <span className="font-semibold text-neutral-900">{item.qty}x</span> {item.name}
@@ -302,7 +293,7 @@ export default function OwnerDashboard() {
                     ))}
                     {columnOrders.length === 0 && (
                         <div className="h-24 border-2 border-dashed border-neutral-200 bg-neutral-50/50 rounded-xl flex flex-col items-center justify-center text-neutral-400 text-sm font-medium mt-2">
-                            Drop Here
+                            No Orders
                         </div>
                     )}
                 </div>
